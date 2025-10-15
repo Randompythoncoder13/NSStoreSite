@@ -1,8 +1,5 @@
 import streamlit as st
-from sqlalchemy.orm import sessionmaker
 from werkzeug.security import generate_password_hash, check_password_hash
-
-# MODIFIED: Import the new Category model
 from db_setup import User, Store, Product, Order, Category
 
 # --- Database Connection managed by Streamlit ---

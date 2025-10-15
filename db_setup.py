@@ -1,16 +1,15 @@
-import os
 from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, DateTime
-from sqlalchemy.orm import sessionmaker, relationship, declarative_base
+from sqlalchemy.orm import relationship, declarative_base
 import datetime
 
 # --- Database Connection for Remote PostgreSQL ---
 # This is for your one-time local execution.
-DIALECT = "postgresql"
-USERNAME = "postgres"
-PASSWORD = "streamlitapp"
-HOST = "99.98.180.233"
-PORT = 5432
-DATABASE = "marketplace_db"
+DIALECT = ""
+USERNAME = ""
+PASSWORD = ""
+HOST = ""
+PORT = 0000
+DATABASE = ""
 
 DATABASE_URL = f"{DIALECT}://{USERNAME}:{PASSWORD}@{HOST}:{PORT}/{DATABASE}"
 
