@@ -1,13 +1,16 @@
+import os
 from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, DateTime
-from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.orm import sessionmaker, relationship, declarative_base
 import datetime
 
-DIALECT = ""
-USERNAME = ""
-PASSWORD = ""
-HOST = ""
-PORT = 0000
-DATABASE = ""
+# --- Database Connection for Remote PostgreSQL ---
+# This is for your one-time local execution.
+DIALECT = "postgresql"
+USERNAME = "postgres"
+PASSWORD = "streamlitapp"
+HOST = "99.98.180.233"
+PORT = 5432
+DATABASE = "marketplace_db"
 
 DATABASE_URL = f"{DIALECT}://{USERNAME}:{PASSWORD}@{HOST}:{PORT}/{DATABASE}"
 
@@ -30,6 +33,20 @@ class Store(Base):
     user_id = Column(Integer, ForeignKey('users.id'), unique=True)
     owner = relationship("User", back_populates="store")
     products = relationship("Product", back_populates="store", cascade="all, delete-orphan")
+    # NEW RELATIONSHIP: A store can have many categories
+    categories = relationship("Category", back_populates="store", cascade="all, delete-orphan")
+
+
+# NEW MODEL: Category
+class Category(Base):
+    __tablename__ = 'categories'
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    store_id = Column(Integer, ForeignKey('stores.id'))
+
+    # Relationships
+    store = relationship("Store", back_populates="categories")
+    products = relationship("Product", back_populates="category")
 
 
 class Product(Base):
@@ -39,7 +56,12 @@ class Product(Base):
     description = Column(String)
     price = Column(Integer, nullable=False)
     store_id = Column(Integer, ForeignKey('stores.id'))
+    # MODIFIED: Add a foreign key to the Category table. It can be null.
+    category_id = Column(Integer, ForeignKey('categories.id'), nullable=True)
+
+    # Relationships
     store = relationship("Store", back_populates="products")
+    category = relationship("Category", back_populates="products")  # NEW
 
 
 class Order(Base):
@@ -59,15 +81,10 @@ def setup_remote_db():
     try:
         engine = create_engine(DATABASE_URL)
         Base.metadata.create_all(engine)
-        print("Tables created successfully on the remote database!")
-        print("You can now deploy your Streamlit app.")
+        print("Tables created/updated successfully on the remote database!")
     except Exception as e:
         print(f"\nAn error occurred: {e}")
-        print("Please check the following:")
-        print("1. Is the PostgreSQL server running on your hosting machine?")
-        print("2. Is port correctly port-forwarded on your router?")
-        print("3. Is the firewall on your home machine allowing connections on the port?")
-        print("4. Are the username, password, host, and database name correct?")
+
 
 if __name__ == "__main__":
     setup_remote_db()
