@@ -1,15 +1,10 @@
 import streamlit as st
-from sqlalchemy.orm import sessionmaker
 from werkzeug.security import generate_password_hash, check_password_hash
-
-# Import the models
 from db_setup import User, Store, Product, Order, Category
 
-# --- Database Connection managed by Streamlit ---
 conn = st.connection("marketplace_db", type="sql")
 
 
-# --- Password Hashing & Session State (unchanged) ---
 def set_password(password):
     return generate_password_hash(password)
 
@@ -25,7 +20,6 @@ if 'logged_in' not in st.session_state:
     st.session_state.cart = []
 
 
-# --- show_login_signup (unchanged) ---
 def show_login_signup():
     st.title("Welcome to the Armory Exchange!")
     menu = ["Login", "Sign Up"]
@@ -66,7 +60,6 @@ def show_login_signup():
                         st.success("Account created! Please login.")
 
 
-# --- show_marketplace (unchanged) ---
 def show_marketplace():
     st.title("Marketplace")
     with conn.session as session:
@@ -109,9 +102,9 @@ def show_marketplace():
                                 {'product_id': product.id, 'name': product.name, 'quantity': quantity_to_buy,
                                  'price': product.price})
                             st.success(f"Added {quantity_to_buy} of {product.name} to your cart.")
+                    st.write("---")
 
 
-# --- show_my_store (unchanged) ---
 def show_my_store():
     st.title("My Store")
     with conn.session as session:
@@ -207,7 +200,6 @@ def show_my_store():
                         st.rerun()
 
 
-# --- NEW FUNCTION: show_store_sales ---
 def show_store_sales():
     st.title("Store Sales History")
     with conn.session as session:
@@ -248,7 +240,6 @@ def show_store_sales():
             st.write(f"**Total Price:** ${sale.total_price:,}")
 
 
-# --- show_cart & show_my_orders (unchanged) ---
 def show_cart():
     st.title("Your Shopping Cart")
     if not st.session_state.cart:
@@ -292,13 +283,11 @@ def show_my_orders():
                     f"**Order #{order.id}** - {order.timestamp.strftime('%Y-%m-%d %H:%M')}: {order.quantity_purchased} x **{product.name}** for ${order.total_price:,}")
 
 
-# --- Main App Logic (MODIFIED) ---
 if not st.session_state.logged_in:
     show_login_signup()
 else:
     st.sidebar.title(f"Welcome, {st.session_state.username}")
 
-    # MODIFIED: Added "Store Sales" to the navigation options
     app_mode = st.sidebar.radio(
         "Navigate",
         ["Marketplace", "My Store", "Store Sales", "My Orders", "Shopping Cart"]
@@ -315,7 +304,6 @@ else:
         show_marketplace()
     elif app_mode == "My Store":
         show_my_store()
-    # MODIFIED: Added the elif block to call the new function
     elif app_mode == "Store Sales":
         show_store_sales()
     elif app_mode == "Shopping Cart":
