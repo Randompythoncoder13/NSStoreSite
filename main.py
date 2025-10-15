@@ -1,5 +1,8 @@
 import streamlit as st
+from sqlalchemy.orm import sessionmaker
 from werkzeug.security import generate_password_hash, check_password_hash
+
+# Import the models
 from db_setup import User, Store, Product, Order, Category
 
 # --- Database Connection managed by Streamlit ---
@@ -63,7 +66,7 @@ def show_login_signup():
                         st.success("Account created! Please login.")
 
 
-# --- show_marketplace (MODIFIED) ---
+# --- show_marketplace (unchanged) ---
 def show_marketplace():
     st.title("Marketplace")
     with conn.session as session:
@@ -79,12 +82,10 @@ def show_marketplace():
             selected_store = session.query(Store).filter_by(name=selected_store_name).first()
             st.header(f"Products in {selected_store.name}")
 
-            # MODIFIED: Add category filter
             categories = selected_store.categories
             category_names = ["All"] + [c.name for c in categories]
             selected_category_name = st.radio("Filter by Category:", category_names, horizontal=True)
 
-            # Filter products based on selection
             if selected_category_name == "All":
                 products_to_display = selected_store.products
             else:
@@ -110,13 +111,12 @@ def show_marketplace():
                             st.success(f"Added {quantity_to_buy} of {product.name} to your cart.")
 
 
-# --- show_my_store (HEAVILY MODIFIED) ---
+# --- show_my_store (unchanged) ---
 def show_my_store():
     st.title("My Store")
     with conn.session as session:
         user_store = session.query(Store).filter_by(user_id=st.session_state.user_id).first()
         if not user_store:
-            # ... (this part is unchanged)
             st.info("You don't have a store yet. Create one below!")
             with st.form("create_store_form"):
                 store_name = st.text_input("Your New Store Name")
@@ -128,8 +128,6 @@ def show_my_store():
                     st.rerun()
         else:
             st.header(f"Manage Your Store: {user_store.name}")
-
-            # NEW: Category Management Section
             with st.expander("Manage Categories"):
                 st.subheader("Add a Category")
                 with st.form("add_category_form", clear_on_submit=True):
@@ -140,7 +138,6 @@ def show_my_store():
                         session.commit()
                         st.success(f"Category '{category_name}' added.")
                         st.rerun()
-
                 st.subheader("Existing Categories")
                 categories = user_store.categories
                 if not categories:
@@ -152,27 +149,22 @@ def show_my_store():
                         session.delete(category)
                         session.commit()
                         st.rerun()
-
-            # MODIFIED: Add category selection to product forms
             categories = user_store.categories
             category_map = {cat.name: cat.id for cat in categories}
             category_names = ["Uncategorized"] + list(category_map.keys())
-
             with st.expander("Add a New Product"):
                 with st.form("add_product_form", clear_on_submit=True):
                     product_name = st.text_input("Product Name")
                     product_desc = st.text_area("Product Description")
                     product_price = st.number_input("Price ($)", min_value=1, step=1, format="%d")
-                    # MODIFIED: Category dropdown
                     chosen_category_name = st.selectbox("Category", options=category_names)
                     if st.form_submit_button("Add Product"):
-                        cat_id = category_map.get(chosen_category_name)  # Returns None if "Uncategorized"
+                        cat_id = category_map.get(chosen_category_name)
                         new_product = Product(name=product_name, description=product_desc, price=product_price,
                                               store_id=user_store.id, category_id=cat_id)
                         session.add(new_product)
                         session.commit()
                         st.rerun()
-
             st.markdown("---")
             st.header("Manage Existing Products")
             products = user_store.products
@@ -184,23 +176,19 @@ def show_my_store():
                                                      index=0)
                 selected_product = next((p for p in products if p.name == selected_product_name), None)
                 if selected_product:
-                    # Determine current category for the dropdown default
                     current_cat_name = "Uncategorized"
                     if selected_product.category_id:
                         current_cat_name = next(
                             (name for name, id in category_map.items() if id == selected_product.category_id),
                             "Uncategorized")
-
                     with st.form(key=f"edit_form_{selected_product.id}"):
                         st.subheader(f"Editing: {selected_product.name}")
                         new_name = st.text_input("Product Name", value=selected_product.name)
                         new_desc = st.text_area("Description", value=selected_product.description)
                         new_price = st.number_input("Price ($)", min_value=1, step=1, format="%d",
                                                     value=selected_product.price)
-                        # MODIFIED: Category dropdown for editing
                         edited_cat_name = st.selectbox("Category", options=category_names,
                                                        index=category_names.index(current_cat_name))
-
                         if st.form_submit_button("Save Changes"):
                             product_to_update = session.query(Product).get(selected_product.id)
                             product_to_update.name = new_name
@@ -209,8 +197,6 @@ def show_my_store():
                             product_to_update.category_id = category_map.get(edited_cat_name)
                             session.commit()
                             st.rerun()
-
-                    # ... (Delete section is unchanged)
                     st.markdown("---")
                     st.subheader("Delete Product")
                     st.warning(f"**Warning:** This will permanently delete **{selected_product.name}**.")
@@ -219,6 +205,47 @@ def show_my_store():
                         session.delete(product_to_delete)
                         session.commit()
                         st.rerun()
+
+
+# --- NEW FUNCTION: show_store_sales ---
+def show_store_sales():
+    st.title("Store Sales History")
+    with conn.session as session:
+        # First, find the current user's store
+        user_store = session.query(Store).filter_by(user_id=st.session_state.user_id).first()
+
+        if not user_store:
+            st.info("You must create a store before you can view sales.")
+            return
+
+        # Query to get all sales for products in the user's store
+        sales = session.query(
+            Order.timestamp,
+            User.username,  # The buyer's username
+            Product.name,  # The product name
+            Order.quantity_purchased,
+            Order.total_price
+        ).join(
+            Product, Order.product_id == Product.id  # Join Order to Product
+        ).join(
+            User, Order.user_id == User.id  # Join Order to User (the buyer)
+        ).filter(
+            Product.store_id == user_store.id  # Filter for products in our store
+        ).order_by(
+            Order.timestamp.desc()  # Show most recent first
+        ).all()
+
+        if not sales:
+            st.info("Your store has not made any sales yet.")
+            return
+
+        for sale in sales:
+            st.markdown("---")
+            st.subheader(f"Sale on {sale.timestamp.strftime('%Y-%m-%d %H:%M')}")
+            st.write(f"**Buyer:** {sale.username}")
+            st.write(f"**Product:** {sale.name}")
+            st.write(f"**Quantity:** {sale.quantity_purchased}")
+            st.write(f"**Total Price:** ${sale.total_price:,}")
 
 
 # --- show_cart & show_my_orders (unchanged) ---
@@ -265,22 +292,32 @@ def show_my_orders():
                     f"**Order #{order.id}** - {order.timestamp.strftime('%Y-%m-%d %H:%M')}: {order.quantity_purchased} x **{product.name}** for ${order.total_price:,}")
 
 
-# --- Main App Logic (unchanged) ---
+# --- Main App Logic (MODIFIED) ---
 if not st.session_state.logged_in:
     show_login_signup()
 else:
     st.sidebar.title(f"Welcome, {st.session_state.username}")
-    app_mode = st.sidebar.radio("Navigate", ["Marketplace", "My Store", "My Orders", "Shopping Cart"])
+
+    # MODIFIED: Added "Store Sales" to the navigation options
+    app_mode = st.sidebar.radio(
+        "Navigate",
+        ["Marketplace", "My Store", "Store Sales", "My Orders", "Shopping Cart"]
+    )
+
     if st.sidebar.button("Logout"):
         st.session_state.logged_in = False
         st.session_state.user_id = None
         st.session_state.username = None
         st.session_state.cart = []
         st.rerun()
+
     if app_mode == "Marketplace":
         show_marketplace()
     elif app_mode == "My Store":
         show_my_store()
+    # MODIFIED: Added the elif block to call the new function
+    elif app_mode == "Store Sales":
+        show_store_sales()
     elif app_mode == "Shopping Cart":
         show_cart()
     elif app_mode == "My Orders":
