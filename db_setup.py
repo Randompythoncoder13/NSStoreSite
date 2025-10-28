@@ -58,9 +58,6 @@ class Product(Base):
     store_id = Column(Integer, ForeignKey('stores.id'))
     # MODIFIED: Add a foreign key to the Category table. It can be null.
     category_id = Column(Integer, ForeignKey('categories.id'), nullable=True)
-    # NEW: Add a display order column for custom positioning by store owners
-    display_order = Column(Integer, default=0, nullable=False)
-
 
     # Relationships
     store = relationship("Store", back_populates="products")
@@ -83,10 +80,8 @@ def setup_remote_db():
     print("Connecting to the remote database...")
     try:
         engine = create_engine(DATABASE_URL)
-        # This will add the new 'display_order' column without dropping existing data
         Base.metadata.create_all(engine)
         print("Tables created/updated successfully on the remote database!")
-        print("NOTE: The 'display_order' column has been added to the 'products' table.")
     except Exception as e:
         print(f"\nAn error occurred: {e}")
 
