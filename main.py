@@ -1,6 +1,10 @@
 import streamlit as st
 from werkzeug.security import generate_password_hash, check_password_hash
 from db_setup import User, Store, Product, Order, Category
+from sqlalchemy import or_
+
+# Set to wide mode for better layout
+st.set_page_config(layout="wide")
 
 conn = st.connection("marketplace_db", type="sql")
 
@@ -79,51 +83,50 @@ def show_marketplace():
             category_names = ["All"] + [c.name for c in categories]
             selected_category_name = st.radio("Filter by Category:", category_names, horizontal=True)
 
+            query = session.query(Product).filter(Product.store_id == selected_store.id)
+
             if selected_category_name == "All":
-                products_to_display = selected_store.products
+                # Show all products from the store
+                products_to_display = query.order_by(Product.category_id, Product.display_order).all()
             else:
+                # Show products from the selected category
                 selected_category = next(c for c in categories if c.name == selected_category_name)
-                products_to_display = [p for p in selected_store.products if p.category_id == selected_category.id]
+                products_to_display = query.filter(Product.category_id == selected_category.id).order_by(
+                    Product.display_order).all()
 
             if not products_to_display:
                 st.write("This category has no products yet.")
             else:
-                # --- MODIFICATION START ---
-                # Define number of columns for the grid
-                num_cols = 3  # You can change this to 2, 4, etc.
-                cols = st.columns(num_cols)
+                # --- NEW GRID LAYOUT ---
+                # Define number of columns
+                num_columns = 4
+                cols = st.columns(num_columns)
 
-                for i, product in enumerate(products_to_display):
-                    # Place each product in a column, cycling through columns
-                    with cols[i % num_cols]:
-                        # Create a "card" for each product
-                        with st.container(border=True):
-                            st.subheader(product.name)
-                            st.write(f"**${product.price:,}**")
+                for index, product in enumerate(products_to_display):
+                    # Assign product to a column in a repeating pattern
+                    col = cols[index % num_columns]
 
-                            # Collapsible details
-                            with st.expander("Details"):
-                                st.write(product.description if product.description else "No description available.")
+                    # Use a container for each "product box"
+                    with col.container(border=True):
+                        st.subheader(product.name)
+                        st.write(f"**${product.price:,}**")
 
-                            # Add to cart controls at the bottom of the card
-                            c1, c2 = st.columns([1, 2])
-                            with c1:
-                                # Use label_visibility="collapsed" for a cleaner look
-                                quantity_to_buy = st.number_input(
-                                    "Qty", min_value=1, value=1, step=1,
-                                    key=f"qty_{product.id}", label_visibility="collapsed"
-                                )
-                            with c2:
-                                if st.button("Add to Cart", key=f"add_{product.id}", use_container_width=True):
-                                    st.session_state.cart.append(
-                                        {'product_id': product.id, 'name': product.name, 'quantity': quantity_to_buy,
-                                         'price': product.price})
-                                    # st.toast is a less intrusive notification
-                                    st.toast(f"Added {quantity_to_buy} x {product.name}!", icon="🛒")
+                        # Expander for details
+                        with st.expander("Details"):
+                            st.write(product.description or "No description available.")
 
-                        # Add a little vertical space inside the column
-                        st.write("")
-                        # --- MODIFICATION END ---
+                        # Add to cart functionality
+                        quantity_to_buy = st.number_input("Qty", min_value=1, value=1, key=f"qty_{product.id}", step=1,
+                                                          label_visibility="collapsed")
+                        if st.button("Add to Cart", key=f"add_{product.id}", use_container_width=True):
+                            st.session_state.cart.append(
+                                {'product_id': product.id, 'name': product.name, 'quantity': quantity_to_buy,
+                                 'price': product.price})
+                            st.toast(f"Added {quantity_to_buy} of {product.name} to cart!", icon="🛒")
+                            # We use st.toast for a less intrusive notification
+
+                # Add a spacer at the bottom if the last row isn't full
+                st.write("")
 
 
 def show_my_store():
@@ -160,28 +163,40 @@ def show_my_store():
                     c1, c2 = st.columns([3, 1])
                     c1.write(category.name)
                     if c2.button("Delete", key=f"del_cat_{category.id}"):
+                        # Find products in this category and set their category_id to null
+                        products_to_update = session.query(Product).filter_by(category_id=category.id).all()
+                        for prod in products_to_update:
+                            prod.category_id = None
+                        session.commit()  # Commit product changes first
+
                         session.delete(category)
                         session.commit()
                         st.rerun()
             categories = user_store.categories
             category_map = {cat.name: cat.id for cat in categories}
             category_names = ["Uncategorized"] + list(category_map.keys())
-            with st.expander("Add a New Product"):
+            with st.expander("Add a New Product", expanded=True):
                 with st.form("add_product_form", clear_on_submit=True):
                     product_name = st.text_input("Product Name")
                     product_desc = st.text_area("Product Description")
                     product_price = st.number_input("Price ($)", min_value=1, step=1, format="%d")
                     chosen_category_name = st.selectbox("Category", options=category_names)
+                    # NEW: Add display order
+                    product_order = st.number_input("Display Order", min_value=0, step=1, value=0,
+                                                    help="Lowest numbers appear first within a category.")
+
                     if st.form_submit_button("Add Product"):
                         cat_id = category_map.get(chosen_category_name)
                         new_product = Product(name=product_name, description=product_desc, price=product_price,
-                                              store_id=user_store.id, category_id=cat_id)
+                                              store_id=user_store.id, category_id=cat_id,
+                                              display_order=product_order)  # Pass new value
                         session.add(new_product)
                         session.commit()
                         st.rerun()
             st.markdown("---")
             st.header("Manage Existing Products")
-            products = user_store.products
+            products = session.query(Product).filter_by(store_id=user_store.id).order_by(Product.category_id,
+                                                                                         Product.display_order).all()
             if not products:
                 st.write("You haven't added any products yet.")
             else:
@@ -203,12 +218,17 @@ def show_my_store():
                                                     value=selected_product.price)
                         edited_cat_name = st.selectbox("Category", options=category_names,
                                                        index=category_names.index(current_cat_name))
+                        # NEW: Edit display order
+                        new_order = st.number_input("Display Order", min_value=0, step=1,
+                                                    value=selected_product.display_order)
+
                         if st.form_submit_button("Save Changes"):
                             product_to_update = session.query(Product).get(selected_product.id)
                             product_to_update.name = new_name
                             product_to_update.description = new_desc
                             product_to_update.price = new_price
                             product_to_update.category_id = category_map.get(edited_cat_name)
+                            product_to_update.display_order = new_order  # Save new order
                             session.commit()
                             st.rerun()
                     st.markdown("---")
