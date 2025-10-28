@@ -88,21 +88,42 @@ def show_marketplace():
             if not products_to_display:
                 st.write("This category has no products yet.")
             else:
-                for product in products_to_display:
-                    col1, col2, col3 = st.columns([2, 1, 2])
-                    with col1:
-                        st.subheader(product.name)
-                        st.write(product.description)
-                    with col2:
-                        st.write(f"${product.price:,}")
-                    with col3:
-                        quantity_to_buy = st.number_input("Quantity", min_value=1, key=f"qty_{product.id}", step=1)
-                        if st.button("Add to Cart", key=f"add_{product.id}"):
-                            st.session_state.cart.append(
-                                {'product_id': product.id, 'name': product.name, 'quantity': quantity_to_buy,
-                                 'price': product.price})
-                            st.success(f"Added {quantity_to_buy} of {product.name} to your cart.")
-                    st.write("---")
+                # --- MODIFICATION START ---
+                # Define number of columns for the grid
+                num_cols = 3  # You can change this to 2, 4, etc.
+                cols = st.columns(num_cols)
+
+                for i, product in enumerate(products_to_display):
+                    # Place each product in a column, cycling through columns
+                    with cols[i % num_cols]:
+                        # Create a "card" for each product
+                        with st.container(border=True):
+                            st.subheader(product.name)
+                            st.write(f"**${product.price:,}**")
+
+                            # Collapsible details
+                            with st.expander("Details"):
+                                st.write(product.description if product.description else "No description available.")
+
+                            # Add to cart controls at the bottom of the card
+                            c1, c2 = st.columns([1, 2])
+                            with c1:
+                                # Use label_visibility="collapsed" for a cleaner look
+                                quantity_to_buy = st.number_input(
+                                    "Qty", min_value=1, value=1, step=1,
+                                    key=f"qty_{product.id}", label_visibility="collapsed"
+                                )
+                            with c2:
+                                if st.button("Add to Cart", key=f"add_{product.id}", use_container_width=True):
+                                    st.session_state.cart.append(
+                                        {'product_id': product.id, 'name': product.name, 'quantity': quantity_to_buy,
+                                         'price': product.price})
+                                    # st.toast is a less intrusive notification
+                                    st.toast(f"Added {quantity_to_buy} x {product.name}!", icon="🛒")
+
+                        # Add a little vertical space inside the column
+                        st.write("")
+                        # --- MODIFICATION END ---
 
 
 def show_my_store():
